@@ -280,7 +280,7 @@ int main()
     srand(time(NULL));
     NeuralNetwork nn("input.csv", "network.csv");
     // train the neural network with the given input until the error is less than .03
-    nn.train(10000, 0.03, 0.5);
+    nn.train(10000, 0.03, 1.3);
 
     // print the output of the neural network
     vector<double> output = nn.get_output();
