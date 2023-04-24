@@ -9,11 +9,11 @@ using namespace std;
 struct Node
 {
     double collector;
-    vector<Node> connections;
+    vector<Node *> connections;
     vector<double> weights;
     double error;
 
-    Node(vector<Node> connections)
+    Node(vector<Node *> connections)
     {
         this->connections = connections;
         this->collector = 0;
@@ -33,9 +33,8 @@ class NeuralNetwork
 {
 private:
     vector<int> structure;
-    vector<vector<Node>> layers;
+    vector<vector<Node *>> layers;
     vector<vector<double>> inputs;
-    double learning_rate;
 
 public:
     NeuralNetwork(string inputFile, string structureFile, double lrate)
@@ -61,21 +60,20 @@ public:
             structure.push_back(stoi(val));
         }
         file.close();
-        this->learning_rate = lrate;
 
         // Create layers with connections to each node based on structure
         for (int i = 0; i < structure.size(); i++)
         {
-            vector<Node> layer;
+            vector<Node *> layer;
             for (int j = 0; j < structure[i]; j++)
             {
                 if (i == 0)
                 {
-                    layer.push_back(Node());
+                    layer.push_back(new Node());
                 }
                 else
                 {
-                    layer.push_back(Node(layers[i - 1]));
+                    layer.push_back(new Node(layers[i - 1]));
                 }
             }
             layers.push_back(layer);
@@ -111,12 +109,12 @@ public:
 
     double sigmoid(double x)
     {
-        return 1 / (1 + exp(-x));
+        return 1.0 / (1.0 + exp(-x));
     }
 
-    double sigmoid_derivative(double x)
+    double sigmoid_derivative(double collector)
     {
-        return x * (1 - x);
+        return collector * (1.0 - collector);
     }
 
     // train the neural network using the inputs and structure with 1 output and print each epoch until the error is less than 0.05
@@ -126,7 +124,7 @@ public:
 
         for (int epoch = 0; epoch < num_epochs; epoch++)
         {
-            double sum_error = 1;
+            double epoch_error = 0;
             for (auto row : inputs)
             {
                 vector<double> expected;
@@ -134,50 +132,47 @@ public:
                 for (int j = 0; j < structure[structure.size() - 1]; j++)
                 {
                     expected.push_back(row[num_inputs + j]);
-                    sum_error += pow(row[num_inputs + j] - layers[layers.size() - 1][j].collector, 2);
-                }
-                if (sum_error <= target_error)
-                {
-                    cout << "Target error reached error " << sum_error << endl;
-                    return;
+                    epoch_error += pow(row[num_inputs + j] - layers[layers.size() - 1][j]->collector, 2);
                 }
                 back_propagate(expected);
                 update_weights(l_rate);
             }
-            cout << ">Epoch=" << epoch << " l_rate=" << l_rate << " error=" << sum_error << endl;
+            if (epoch_error <= target_error)
+            {
+                cout << "Target error reached error " << epoch_error << endl;
+                return;
+            }
+            cout << ">Epoch=" << epoch << " l_rate=" << l_rate << " error=" << epoch_error << endl;
         }
     }
 
     // update the weights
     void update_weights(double l_rate)
     {
-        for (int i = 1; i < structure.size(); i++)
+        for (int i = 1; i < layers.size(); i++)
         {
-            for (int j = 0; j < structure[i]; j++)
+            vector<double> inputs;
+            for (auto neuron : layers[i - 1])
             {
-                for (int k = 0; k < structure[i - 1]; k++)
+                inputs.push_back(neuron->collector);
+            }
+            for (auto neuron : layers[i])
+            {
+                for (int j = 0; j < inputs.size(); j++)
                 {
-                    layers[i][j].weights[k] -= l_rate * layers[i][j].error * layers[i - 1][k].collector;
+                    neuron->weights[j] -= l_rate * neuron->error * inputs[j];
                 }
-                layers[i][j].weights[layers[i][j].weights.size()-1] -= l_rate * layers[i][j].error;
+                neuron->weights.back() -= l_rate * neuron->error;
             }
         }
     }
 
-    void forward_prop(vector<double> expected)
-    {
-        vector<double> error;
-        for (int i = 0; i < structure[structure.size() - 1]; i++)
-        {
-            error.push_back(layers[structure.size() - 1][i].collector - expected[expected.size() - 1]);
-        }
-    }
-
-    void feed_forward(vector<double> input)
+    // feed forward the inputs
+    void feed_forward(vector<double> row)
     {
         for (int i = 0; i < structure[0]; i++)
         {
-            layers[0][i].collector = input[i];
+            layers[0][i]->collector = row[i];
         }
         for (int i = 1; i < structure.size(); i++)
         {
@@ -186,36 +181,38 @@ public:
                 double sum = 0;
                 for (int k = 0; k < structure[i - 1]; k++)
                 {
-                    sum += layers[i - 1][k].collector * layers[i][j].weights[k];
+                    sum += layers[i - 1][k]->collector * layers[i][j]->weights[k];
                 }
-                layers[i][j].collector = sigmoid(sum);
+                sum += layers[i][j]->weights[layers[i][j]->weights.size() - 1];
+                layers[i][j]->collector = sigmoid(sum);
             }
         }
     }
 
     // back propagate the error
+
     void back_propagate(vector<double> expected)
     {
         for (int i = layers.size() - 1; i > 0; i--)
         {
-            vector<Node> &layer = layers[i]; // Use reference to modify original vector
+            vector<Node *> layer = layers[i]; // Use reference to modify original vector
             vector<double> errors;
 
-            if (i == layers.size() - 1) // Compare against layers.size() instead of structure.size()
+            if (i == layers.size() - 1)
             {
                 for (int j = 0; j < layer.size(); j++)
                 {
-                    errors.push_back(layer[j].collector - expected[j]);
+                    errors.push_back(layer[j]->collector - expected[j]);
                 }
             }
             else
             {
                 for (int j = 0; j < layer.size(); j++)
                 {
-                    double error = 0;
-                    for (auto &node : layers[i + 1]) // Use reference to modify original vector
+                    double error = 0.0;
+                    for (auto node : layers[i + 1]) // Use reference to modify original vector
                     {
-                        error += node.weights[j] * node.error;
+                        error += node->weights[j] * node->error;
                     }
                     errors.push_back(error);
                 }
@@ -223,19 +220,31 @@ public:
 
             for (int j = 0; j < layer.size(); j++)
             {
-                layer[j].error = errors[j] * sigmoid_derivative(layer[j].collector);
+                layer[j]->error = errors[j] * sigmoid_derivative(layer[j]->collector);
             }
 
             errors.clear(); // Clear the vector for the next iteration
         }
     }
 
+    // run with a vector of inputs and print output
+    void run(vector<double> inputs)
+    {
+        feed_forward(inputs);
+        for (int i = 0; i < structure[structure.size() - 1]; i++)
+        {
+            cout << layers[structure.size() - 1][i]->collector << " ";
+        }
+        cout << endl;
+    }
+
+
     vector<double> get_output()
     {
         vector<double> output;
         for (int i = 0; i < structure[structure.size() - 1]; i++)
         {
-            output.push_back(layers[structure.size() - 1][i].collector);
+            output.push_back(layers[structure.size() - 1][i]->collector);
         }
         return output;
     }
@@ -250,7 +259,7 @@ public:
             {
                 for (int k = 0; k < structure[i - 1]; k++)
                 {
-                    file << layers[i][j].weights[k] << " ";
+                    file << layers[i][j]->weights[k] << " ";
                 }
                 file << endl;
             }
@@ -268,10 +277,10 @@ public:
 // main function
 int main()
 {
-
+    srand(time(NULL));
     NeuralNetwork nn("input.csv", "network.csv", 0.1);
     // train the neural network with the given input until the error is less than .05
-    nn.train(1000, 0.05, 0.1);
+    nn.train(10000, 0.03, 0.5);
     // print the output of the neural network
     vector<double> output = nn.get_output();
     for (int i = 0; i < output.size(); i++)
