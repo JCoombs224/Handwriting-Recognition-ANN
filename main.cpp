@@ -3,6 +3,9 @@
 #include <string>
 #include <vector>
 #include <cmath>
+#include <stdio.h>
+#include <stdlib.h>
+#include <sqlite3.h> 
 
 using namespace std;
 
@@ -278,6 +281,15 @@ public:
 int main()
 {
     srand(time(NULL));
+
+    sqlite3 *db;
+    char *zErrMsg = 0;
+    int rc;
+    char *sql;
+
+    /* Open database FOR UNIX REQUIRES: sudo apt install libsqlite3-dev */
+    rc = sqlite3_open("hw_data", &db);
+    
     NeuralNetwork nn("input.csv", "network.csv");
     // train the neural network with the given input until the error is less than .03
     nn.train(10000, 0.03, 1.3);
