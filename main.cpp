@@ -1,4 +1,5 @@
 #include <iostream>
+#include <iomanip>
 #include <fstream>
 #include <string>
 #include <vector>
@@ -8,6 +9,12 @@
 #include <sqlite3.h> 
 
 using namespace std;
+
+// SQLite3 database variables
+sqlite3 *db;
+char *zErrMsg = 0;
+int rc;
+char *sql;
 
 struct Node
 {
@@ -130,7 +137,7 @@ private:
         }
     }
 public:
-    NeuralNetwork(string inputFile, string structureFile)
+    NeuralNetwork(string structureFile)
     {
         // Load structure from file into the structure vector
         ifstream file(structureFile);
@@ -172,38 +179,68 @@ public:
             layers.push_back(layer);
         }
 
-        // Load inputs from csv file into the inputs vector
-        file.open(inputFile);
-        if (file.is_open())
-        {
-            string line;
-            while (getline(file, line))
-            {
-                vector<double> input;
-                string value = "";
-                for (int i = 0; i < line.length(); i++)
-                {
-                    if (line[i] == ',')
-                    {
-                        input.push_back(stod(value));
-                        value = "";
-                    }
-                    else
-                    {
-                        value += line[i];
-                    }
-                }
-                input.push_back(stod(value));
-                this->inputs.push_back(input);
-            }
-        }
-        file.close();
+        // // Load inputs from csv file into the inputs vector
+        // file.open(inputFile);
+        // if (file.is_open())
+        // {
+        //     string line;
+        //     while (getline(file, line))
+        //     {
+        //         vector<double> input;
+        //         string value = "";
+        //         for (int i = 0; i < line.length(); i++)
+        //         {
+        //             if (line[i] == ',')
+        //             {
+        //                 input.push_back(stod(value));
+        //                 value = "";
+        //             }
+        //             else
+        //             {
+        //                 value += line[i];
+        //             }
+        //         }
+        //         input.push_back(stod(value));
+        //         this->inputs.push_back(input);
+        //     }
+        // }
+        // file.close();
     }
 
     // train the neural network
-    void train(int num_epochs, double target_error = 0.05, double l_rate = 0.1)
+    void train(const char* query, int num_epochs, double target_error = 0.05, double l_rate = 0.1)
     {
         int num_inputs = layers[0].size();
+        inputs.clear();
+
+
+        sqlite3_stmt *stmt;
+        rc = sqlite3_prepare_v2(db, query, -1, &stmt, NULL);
+        if (rc != SQLITE_OK)
+        {
+            fprintf(stderr, "SQL error: %s\n", zErrMsg);
+            sqlite3_free(zErrMsg);
+            return;
+        }
+
+        // push the inputs into the inputs vector
+        while (sqlite3_step(stmt) == SQLITE_ROW)
+        {
+            vector<double> input;
+            for (int i = 0; i < num_inputs; i++)
+            {
+                input.push_back(sqlite3_column_double(stmt, i));
+            }
+            for (int i = num_inputs; i < sqlite3_column_count(stmt); i++)
+            {
+                input.push_back(sqlite3_column_double(stmt, i));
+            }
+            this->inputs.push_back(input);
+        }
+        sqlite3_finalize(stmt);
+        sqlite3_close(db);
+
+        cout << inputs.size() << endl;
 
         for (int epoch = 0; epoch < num_epochs; epoch++)
         {
@@ -215,7 +252,10 @@ public:
                 for (int j = 0; j < structure[structure.size() - 1]; j++)
                 {
                     expected.push_back(row[num_inputs + j]);
-                    epoch_error += pow(row[num_inputs + j] - layers[layers.size() - 1][j]->collector, 2);
+                }
+                for (int j = 0; j < structure[structure.size() - 1]; j++)
+                {
+                    epoch_error += pow(layers[structure.size() - 1][j]->collector - expected[j], 2);
                 }
                 back_propagate(expected);
                 update_weights(l_rate);
@@ -225,7 +265,7 @@ public:
                 cout << "Target error reached error " << epoch_error << endl;
                 return;
             }
-            cout << ">Epoch=" << epoch << " l_rate=" << l_rate << " error=" << epoch_error << endl;
+            cout << setprecision(10) << ">Epoch=" << epoch << " l_rate=" << l_rate << " error=" << setprecision(20) << epoch_error << endl;
         }
     }
 
@@ -277,25 +317,33 @@ public:
     }
 };
 
+
+
 // main function
 int main()
 {
     srand(time(NULL));
 
-    sqlite3 *db;
-    char *zErrMsg = 0;
-    int rc;
-    char *sql;
-
     /* Open database FOR UNIX REQUIRES: sudo apt install libsqlite3-dev */
-    rc = sqlite3_open("hw_data", &db);
+    rc = sqlite3_open("hw_data_2", &db);
+
+    if(rc)
+    {
+        fprintf(stderr, "Can't open database: %s\n", sqlite3_errmsg(db));
+        return -1;
+    }
+    else
+    {
+        fprintf(stderr, "Opened database successfully\n");
+    }
     
-    NeuralNetwork nn("input.csv", "network.csv");
+    NeuralNetwork a_train_nn("network.csv");
+
     // train the neural network with the given input until the error is less than .03
-    nn.train(10000, 0.03, 1.3);
+    a_train_nn.train("select * from a_train;", 10000, 0.20, 0.01);
 
     // print the output of the neural network
-    vector<double> output = nn.get_output();
+    vector<double> output = a_train_nn.get_output();
     for (int i = 0; i < output.size(); i++)
     {
         cout << output[i] << endl;
