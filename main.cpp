@@ -103,7 +103,7 @@ private:
     {
         for (int i = network.size() - 1; i > 0; i--)
         {
-            vector<Node *> layer = network[i]; // Use reference to modify original vector
+            vector<Node *> layer = network[i];
             vector<double> errors;
 
             if (i == network.size() - 1)
@@ -118,7 +118,7 @@ private:
                 for (int j = 0; j < layer.size(); j++)
                 {
                     double error = 0.0;
-                    for (auto node : network[i + 1]) // Use reference to modify original vector
+                    for (auto node : network[i + 1])
                     {
                         error += node->weights[j] * node->error;
                     }
