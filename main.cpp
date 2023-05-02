@@ -93,7 +93,6 @@ private:
                 {
                     sum += layers[i - 1][k]->collector * layers[i][j]->weights[k];
                 }
-                sum += layers[i][j]->weights[layers[i][j]->weights.size() - 1];
                 layers[i][j]->collector = sigmoid(sum);
             }
         }
@@ -339,8 +338,8 @@ int main()
     
     NeuralNetwork a_train_nn("network.csv");
 
-    // train the neural network with the given input until the error is less than .03
-    a_train_nn.train("select * from a_train;", 10000, 0.20, 0.01);
+    // train the neural network with the given input until the error is less than .10
+    a_train_nn.train("select * from a_train limit 1000;", 10000, 0.10, 0.1);
 
     // print the output of the neural network
     vector<double> output = a_train_nn.get_output();
