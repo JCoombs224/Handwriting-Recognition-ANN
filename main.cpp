@@ -43,7 +43,7 @@ class NeuralNetwork
 {
 private:
     vector<int> structure;
-    vector<vector<Node *>> layers;
+    vector<vector<Node *>> network;
     vector<vector<double>> inputs;
 
     double sigmoid(double x)
@@ -59,20 +59,20 @@ private:
     // update the weights
     void update_weights(double l_rate)
     {
-        for (int i = 1; i < layers.size(); i++)
+        for (int i = 1; i < network.size(); i++)
         {
             vector<double> inputs;
-            for (auto neuron : layers[i - 1])
+            for (auto neuron : network[i - 1])
             {
                 inputs.push_back(neuron->collector);
             }
-            for (auto neuron : layers[i])
+            for (auto neuron : network[i])
             {
                 for (int j = 0; j < inputs.size(); j++)
                 {
                     neuron->weights[j] -= l_rate * neuron->error * inputs[j];
                 }
-                neuron->weights.back() -= l_rate * neuron->error;
+                // neuron->weights.back() -= l_rate * neuron->error;
             }
         }
     }
@@ -82,7 +82,7 @@ private:
     {
         for (int i = 0; i < structure[0]; i++)
         {
-            layers[0][i]->collector = row[i];
+            network[0][i]->collector = row[i];
         }
         for (int i = 1; i < structure.size(); i++)
         {
@@ -91,23 +91,22 @@ private:
                 double sum = 0;
                 for (int k = 0; k < structure[i - 1]; k++)
                 {
-                    sum += layers[i - 1][k]->collector * layers[i][j]->weights[k];
+                    sum += network[i - 1][k]->collector * network[i][j]->weights[k];
                 }
-                layers[i][j]->collector = sigmoid(sum);
+                network[i][j]->collector = sigmoid(sum);
             }
         }
     }
 
     // back propagate the error
-
     void back_propagate(vector<double> expected)
     {
-        for (int i = layers.size() - 1; i > 0; i--)
+        for (int i = network.size() - 1; i > 0; i--)
         {
-            vector<Node *> layer = layers[i]; // Use reference to modify original vector
+            vector<Node *> layer = network[i]; // Use reference to modify original vector
             vector<double> errors;
 
-            if (i == layers.size() - 1)
+            if (i == network.size() - 1)
             {
                 for (int j = 0; j < layer.size(); j++)
                 {
@@ -119,14 +118,14 @@ private:
                 for (int j = 0; j < layer.size(); j++)
                 {
                     double error = 0.0;
-                    for (auto node : layers[i + 1]) // Use reference to modify original vector
+                    for (auto node : network[i + 1]) // Use reference to modify original vector
                     {
                         error += node->weights[j] * node->error;
                     }
                     errors.push_back(error);
                 }
             }
-
+            // 
             for (int j = 0; j < layer.size(); j++)
             {
                 layer[j]->error = errors[j] * sigmoid_derivative(layer[j]->collector);
@@ -160,7 +159,7 @@ public:
         }
         file.close();
 
-        // Create layers with connections to each node based on structure
+        // Create network with connections to each node based on structure
         for (int i = 0; i < structure.size(); i++)
         {
             vector<Node *> layer;
@@ -172,47 +171,20 @@ public:
                 }
                 else
                 {
-                    layer.push_back(new Node(layers[i - 1]));
+                    layer.push_back(new Node(network[i - 1]));
                 }
             }
-            layers.push_back(layer);
+            network.push_back(layer);
         }
-
-        // // Load inputs from csv file into the inputs vector
-        // file.open(inputFile);
-        // if (file.is_open())
-        // {
-        //     string line;
-        //     while (getline(file, line))
-        //     {
-        //         vector<double> input;
-        //         string value = "";
-        //         for (int i = 0; i < line.length(); i++)
-        //         {
-        //             if (line[i] == ',')
-        //             {
-        //                 input.push_back(stod(value));
-        //                 value = "";
-        //             }
-        //             else
-        //             {
-        //                 value += line[i];
-        //             }
-        //         }
-        //         input.push_back(stod(value));
-        //         this->inputs.push_back(input);
-        //     }
-        // }
-        // file.close();
     }
 
     // train the neural network
     void train(const char* query, int num_epochs, double target_error = 0.05, double l_rate = 0.1)
     {
-        int num_inputs = layers[0].size();
+        int num_inputs = network[0].size();
         inputs.clear();
 
-
+        // get the inputs from the database
         sqlite3_stmt *stmt;
         rc = sqlite3_prepare_v2(db, query, -1, &stmt, NULL);
         if (rc != SQLITE_OK)
@@ -239,8 +211,8 @@ public:
         sqlite3_finalize(stmt);
         sqlite3_close(db);
 
-        cout << inputs.size() << endl;
-
+        cout << "Number of inputs = " << inputs.size() << endl;
+        // train the network
         for (int epoch = 0; epoch < num_epochs; epoch++)
         {
             double epoch_error = 0;
@@ -254,7 +226,7 @@ public:
                 }
                 for (int j = 0; j < structure[structure.size() - 1]; j++)
                 {
-                    epoch_error += pow(layers[structure.size() - 1][j]->collector - expected[j], 2);
+                    epoch_error += pow(network[structure.size() - 1][j]->collector - expected[j], 2);
                 }
                 back_propagate(expected);
                 update_weights(l_rate);
@@ -274,7 +246,7 @@ public:
         feed_forward(inputs);
         for (int i = 0; i < structure[structure.size() - 1]; i++)
         {
-            cout << layers[structure.size() - 1][i]->collector << " ";
+            cout << network[structure.size() - 1][i]->collector << " ";
         }
         cout << endl;
     }
@@ -285,7 +257,7 @@ public:
         vector<double> output;
         for (int i = 0; i < structure[structure.size() - 1]; i++)
         {
-            output.push_back(layers[structure.size() - 1][i]->collector);
+            output.push_back(network[structure.size() - 1][i]->collector);
         }
         return output;
     }
@@ -301,18 +273,12 @@ public:
             {
                 for (int k = 0; k < structure[i - 1]; k++)
                 {
-                    file << layers[i][j]->weights[k] << " ";
+                    file << network[i][j]->weights[k] << " ";
                 }
                 file << endl;
             }
         }
         file.close();
-    }
-
-    // Print out the current epoch and the current error
-    void print_error(int epoch, double error)
-    {
-        cout << "Epoch: " << epoch << " Error: " << error << endl;
     }
 };
 
@@ -321,11 +287,13 @@ public:
 // main function
 int main()
 {
+    // seed random number generator
     srand(time(NULL));
 
-    /* Open database FOR UNIX REQUIRES: sudo apt install libsqlite3-dev */
+    // Open database FOR UNIX REQUIRES: sudo apt install libsqlite3-dev
     rc = sqlite3_open("hw_data_2", &db);
 
+    // Check if database opened correctly
     if(rc)
     {
         fprintf(stderr, "Can't open database: %s\n", sqlite3_errmsg(db));
@@ -336,13 +304,33 @@ int main()
         fprintf(stderr, "Opened database successfully\n");
     }
     
-    NeuralNetwork a_train_nn("network.csv");
+    // create the neural network
+    NeuralNetwork nn("network.csv");
 
     // train the neural network with the given input until the error is less than .10
-    a_train_nn.train("select * from a_train limit 1000;", 10000, 0.10, 0.1);
+
+    // training for letter A
+    // cout << "Training for letter a" << endl;
+    // nn.train("select * from a_train order by random() limit 1000;", 10000, 0.10, 0.1);
+
+    // training for letter B
+    // cout << "Training for letter b" << endl;
+    // nn.train("select * from b_train order by random();", 100, 0.10, 0.1);
+
+    // training for letter C
+    // cout << "Training for letter c" << endl;
+    // nn.train("select * from c_train order by random() limit 3000;", 10000, 0.10, 0.01);
+
+    // training for letter D
+    // cout << "Training for letter d" << endl;
+    // nn.train("select * from d_train order by random() limit 5000;", 10000, 0.10, 0.6);
+
+    // training for letter E
+    cout << "Training for letter e" << endl;
+    nn.train("select * from e_train order by random() limit 500;", 10000, 0.10, 0.5);
 
     // print the output of the neural network
-    vector<double> output = a_train_nn.get_output();
+    vector<double> output = nn.get_output();
     for (int i = 0; i < output.size(); i++)
     {
         cout << output[i] << endl;
